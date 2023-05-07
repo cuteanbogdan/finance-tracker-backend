@@ -24,6 +24,14 @@ const UserSchema = new mongoose.Schema({
             ref: "Transaction",
         },
     ],
+    balance: {
+        type: Number,
+        default: 0,
+    },
+    currency: {
+        type: String,
+        default: 'USD',
+    },
 });
 
 module.exports = mongoose.model('User', UserSchema);
