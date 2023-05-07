@@ -78,26 +78,6 @@ router.get("/all-transactions", isAuthenticated, async (req, res) => {
 });
 
 // Update transaction
-router.put('/update-transaction/:id', isAuthenticated, async (req, res) => {
-    try {
-        const { type, date, amount, category, notes } = req.body;
-        const updatedTransaction = await Transaction.findOneAndUpdate(
-            { _id: req.params.id, user: req.user._id },
-            { type, date, amount, category, notes },
-            { new: true }
-        );
-
-        if (!updatedTransaction) {
-            return res.status(404).json({ message: 'Transaction not found' });
-        }
-
-        res.status(200).json(updatedTransaction);
-    } catch (error) {
-        res.status(500).json({ message: 'Server error: Unable to update transaction' });
-    }
-});
-
-// Delete transaction
 router.delete('/delete-transaction/:id', isAuthenticated, async (req, res) => {
     try {
         const deletedTransaction = await Transaction.findOneAndDelete({ _id: req.params.id, user: req.user._id });
@@ -105,6 +85,16 @@ router.delete('/delete-transaction/:id', isAuthenticated, async (req, res) => {
         if (!deletedTransaction) {
             return res.status(404).json({ message: 'Transaction not found' });
         }
+
+        const user = await User.findById(req.user._id);
+
+        if (deletedTransaction.type === 'income') {
+            user.balance -= deletedTransaction.amount;
+        } else {
+            user.balance += deletedTransaction.amount;
+        }
+
+        await user.save();
 
         // Remove the transaction from the user's transactions array
         await User.updateOne({ _id: req.user._id }, { $pull: { transactions: req.params.id } });
@@ -114,6 +104,44 @@ router.delete('/delete-transaction/:id', isAuthenticated, async (req, res) => {
         res.status(500).json({ message: 'Server error: Unable to delete transaction' });
     }
 });
+
+router.put('/update-transaction/:id', isAuthenticated, async (req, res) => {
+    try {
+        const { type, date, amount, category, notes } = req.body;
+        const oldTransaction = await Transaction.findOne({ _id: req.params.id, user: req.user._id });
+
+        if (!oldTransaction) {
+            return res.status(404).json({ message: 'Transaction not found' });
+        }
+
+        const updatedTransaction = await Transaction.findOneAndUpdate(
+            { _id: req.params.id, user: req.user._id },
+            { type, date, amount, category, notes },
+            { new: true }
+        );
+
+        const user = await User.findById(req.user._id);
+
+        if (oldTransaction.type === 'income') {
+            user.balance -= oldTransaction.amount;
+        } else {
+            user.balance += oldTransaction.amount;
+        }
+
+        if (updatedTransaction.type === 'income') {
+            user.balance += updatedTransaction.amount;
+        } else {
+            user.balance -= updatedTransaction.amount;
+        }
+
+        await user.save();
+
+        res.status(200).json(updatedTransaction);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error: Unable to update transaction' });
+    }
+});
+
 
 router.put("/update-balance", isAuthenticated, async (req, res) => {
     try {
@@ -144,10 +172,6 @@ router.put('/update-currency', isAuthenticated, async (req, res) => {
                 $mul: { balance: exchangeRate },
             }
         );
-        // Fetch the updated user document
-        const updatedUser = await User.findById(req.user._id);
-        console.log(updatedUser.balance); // This should log the updated balance
-
         // Update transactions
         transactions.forEach(async (transaction) => {
             transaction.amount = transaction.amount * exchangeRate;
@@ -160,7 +184,27 @@ router.put('/update-currency', isAuthenticated, async (req, res) => {
     }
 });
 
+router.get('/user-details', isAuthenticated, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+        const transactions = await Transaction.find({ user: req.user._id });
 
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const userDetails = {
+            name: user.name,
+            email: user.email,
+            balance: user.balance,
+            transactions: transactions,
+        };
+
+        res.status(200).json(userDetails);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error: Unable to fetch user details' });
+    }
+});
 
 
 
